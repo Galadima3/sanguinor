@@ -1,4 +1,3 @@
-
 use axum::{extract::Request, http::StatusCode, middleware::Next, response::IntoResponse};
 use axum_session_auth::AuthSession;
 use axum_session_sqlx::SessionSqlitePool;

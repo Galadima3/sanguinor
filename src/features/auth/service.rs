@@ -16,16 +16,6 @@ pub async fn check_user_exists(pool: &SqlitePool, username: &str) -> Result<(), 
     } else {
         Ok(())
     }
-
-    // let user = repository::get_user_by_username(pool, username)
-    //     .await
-    //     .map_err(|_| UserServiceError::DatabaseError)?;
-
-    // if user.is_some() {
-    //     Err(UserServiceError::UserAlreadyExists)
-    // } else {
-    //     Ok(())
-    // }
 }
 
 pub async fn create_user(
@@ -38,11 +28,7 @@ pub async fn create_user(
         .map_err(|_| UserServiceError::DatabaseError)
 }
 
-
-pub async fn get_user(
-    pool: &SqlitePool,
-    username: &str,
-) -> Result<UserSql, UserServiceError> {
+pub async fn get_user(pool: &SqlitePool, username: &str) -> Result<UserSql, UserServiceError> {
     repository::get_user_by_username(pool, username)
         .await
         .map_err(|_| UserServiceError::DatabaseError)?

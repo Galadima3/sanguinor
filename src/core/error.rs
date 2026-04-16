@@ -1,3 +1,4 @@
+use crate::features::auth::service::UserServiceError;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -6,26 +7,35 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("User not found")]
-    NotFound,
+    #[error("{0}")]
+    NotFound(String),
 
-    #[error("Username already exists")]
-    Conflict,
+    #[error("{0}")]
+    Conflict(String),
 
-    #[error("Database error")]
-    Database,
+    #[error("{0}")]
+    Database(String),
+}
+
+impl From<UserServiceError> for AppError {
+    fn from(err: UserServiceError) -> Self {
+        match err {
+            UserServiceError::UserAlreadyExists => {
+                AppError::Conflict("Username already exists".into())
+            }
+            UserServiceError::UserNotFound => AppError::NotFound("User not found".into()),
+            UserServiceError::DatabaseError => AppError::Database("Database error".into()),
+        }
+    }
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        match self {
-            AppError::NotFound => (StatusCode::NOT_FOUND, "User not found").into_response(),
-
-            AppError::Conflict => {
-                (StatusCode::BAD_REQUEST, "Username already exists").into_response()
-            }
-
-            AppError::Database => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        }
+        let (status, message) = match &self {
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
+            AppError::Database(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+        };
+        (status, message).into_response()
     }
 }

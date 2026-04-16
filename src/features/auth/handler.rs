@@ -4,67 +4,53 @@ use axum_session_sqlx::SessionSqlitePool;
 use bcrypt::{hash, verify};
 use sqlx::SqlitePool;
 
-use crate::features::auth::{
-    model::{User, UserRequest},
-    service::*,
+use crate::{
+    core::error::AppError,
+    features::auth::{
+        model::{User, UserRequest},
+        service::*,
+    },
 };
 
 pub async fn register(
     State(pool): State<SqlitePool>,
     Json(payload): Json<UserRequest>,
-) -> impl IntoResponse {
-    if let Err(UserServiceError::UserAlreadyExists) =
-        check_user_exists(&pool, &payload.username).await
-    {
-        return (
-            StatusCode::CONFLICT,
-            format!("User '{}' already exists", payload.username),
-        )
-            .into_response();
-    }
+) -> Result<impl IntoResponse, AppError> {
+    check_user_exists(&pool, &payload.username)
+        .await
+        .map_err(|_| AppError::Conflict(format!("Username '{}' is already taken", payload.username)))?;
 
-    let hashed_password = match hash(&payload.password, 10) {
-        Ok(p) => p,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Hashing failed").into_response(),
-    };
+    let hashed_password = hash(&payload.password, 10)
+        .map_err(|_| AppError::Database("Failed to process password".into()))?;
 
-    if let Err(_) = create_user(&pool, &payload.username, &hashed_password).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response();
-    }
+    create_user(&pool, &payload.username, &hashed_password)
+        .await
+        .map_err(|_| AppError::Database("Could not create user, please try again".into()))?;
 
-    StatusCode::CREATED.into_response()
+    Ok((StatusCode::CREATED, "User created"))
 }
 
 pub async fn login(
     auth: AuthSession<User, i64, SessionSqlitePool, SqlitePool>,
     State(pool): State<SqlitePool>,
     Json(payload): Json<UserRequest>,
-) -> impl IntoResponse {
-    let user = match get_user(&pool, &payload.username).await {
-        Ok(user) => user,
-        Err(UserServiceError::UserNotFound) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("Username '{}' is not registered", payload.username),
-            )
-                .into_response();
-        }
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Service error").into_response(),
-    };
+) -> Result<impl IntoResponse, AppError> {
+    let user = get_user(&pool, &payload.username)
+        .await
+        .map_err(|_| AppError::NotFound(format!("'{}' is not registered", payload.username)))?;
 
     if verify(&payload.password, &user.password).unwrap_or(false) {
         auth.login_user(user.id as i64);
-        (StatusCode::OK, "Login successful").into_response()
+        Ok((StatusCode::OK, "Login successful"))
     } else {
-        (StatusCode::UNAUTHORIZED, "Incorrect password").into_response()
+        Err(AppError::NotFound("Incorrect password".into()))
     }
 }
-
 pub async fn log_out(
     auth: AuthSession<User, i64, SessionSqlitePool, SqlitePool>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     auth.logout_user();
-    (StatusCode::OK, "Logged out successfully").into_response()
+    Ok((StatusCode::OK, "Logged out successfully").into_response())
 }
 
 pub async fn protected(Extension(user): Extension<User>) -> impl IntoResponse {
